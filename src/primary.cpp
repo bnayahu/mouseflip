@@ -20,6 +20,10 @@ const wchar_t* BASE_MOUSE_COUNT_VALUE = L"BaseMouseCount";
 const wchar_t* MUTEX_NAME = APP_NAME L"-SingleInstance";
 NOTIFYICONDATA g_nid = {};
 HWND g_hwndMain = NULL;
+// Registered ID of Explorer's "TaskbarCreated" broadcast, or 0 if it could not
+// be registered. Explorer sends this to all top-level windows when it rebuilds
+// the notification area, which is our cue to re-add the tray icon.
+UINT g_uTaskbarCreatedMsg = 0;
 // Tri-state result of the external-mouse check. UNKNOWN means enumeration
 // failed and no conclusion should be drawn from it.
 enum ExternalMouseState {
@@ -70,6 +74,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         CloseHandle(hInstanceMutex);
         return 0;
     }
+
+    // Must be registered before the window exists so WndProc can recognise it.
+    g_uTaskbarCreatedMsg = RegisterWindowMessage(L"TaskbarCreated");
 
     // Register window class
     WNDCLASSEX wc = {};
@@ -128,6 +135,18 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
 // Window procedure
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    // Explorer restarted and rebuilt the notification area, discarding our
+    // icon. Re-add it. The ID is registered at runtime, so it cannot be a
+    // case label.
+    //
+    // Note: this relies on the window being a normal top-level window.
+    // A message-only (HWND_MESSAGE) window does not receive broadcasts, so
+    // this window must not be "optimised" into one.
+    if (g_uTaskbarCreatedMsg != 0 && msg == g_uTaskbarCreatedMsg) {
+        AddTrayIcon(hwnd, GetIconForCurrentState());
+        return 0;
+    }
+
     switch (msg) {
         case WM_CREATE:
             // WM_CREATE is dispatched from inside CreateWindowEx, before it
