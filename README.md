@@ -217,10 +217,14 @@ The application always queries the actual system state rather than maintaining i
 
 - `-std=c++11`: Use C++11 standard
 - `-Wall -Wextra`: Enable comprehensive warnings
+- `-Wno-unused-parameter`: Silence unused-parameter warnings, which are unavoidable in Win32 callback signatures
 - `-DUNICODE -D_UNICODE`: Build with Unicode support
+- `-municode`: Use the Unicode entry point (`wWinMain`). **Required** — without it the link fails with `undefined reference to 'WinMain'`
 - `-mwindows`: Build as Windows GUI application (no console)
+- `-Os`: Optimise for size
+- `-Wl,-s`: Strip symbols from the output binary
 - `-static-libgcc -static-libstdc++`: Static linking for portability
-- `-luser32 -lshell32`: Link Windows system libraries
+- `-luser32 -lshell32 -lcomctl32`: Link Windows system libraries
 
 ## Troubleshooting
 
