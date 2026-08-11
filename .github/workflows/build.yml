@@ -1,0 +1,82 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MinGW-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64
+
+      - name: Build
+        run: ./build.sh 2>&1 | tee build.log
+
+      - name: Fail on compiler warnings
+        run: |
+          if grep -i "warning:" build.log; then
+            echo "::error::Build produced compiler warnings"
+            exit 1
+          fi
+          echo "No warnings."
+
+      # Guards against the README drifting from the real build invocation.
+      # This command is a verbatim copy of the one in README.md; if you change
+      # one, change both. Omitting -municode fails with 'undefined reference
+      # to WinMain', which shipped undetected before this check existed.
+      - name: Verify the README's documented build command works
+        run: |
+          x86_64-w64-mingw32-windres resources/primary.rc -O coff -o /tmp/primary.res
+          x86_64-w64-mingw32-g++ -std=c++11 -Wall -Wextra -Wno-unused-parameter \
+               -Os -DUNICODE -D_UNICODE \
+               -mwindows -municode \
+               src/primary.cpp \
+               /tmp/primary.res \
+               -o /tmp/Primary.exe \
+               -luser32 -lshell32 -lcomctl32 -static-libgcc -static-libstdc++ \
+               -Wl,-s
+          test -f /tmp/Primary.exe
+
+      - name: Verify the version resource is embedded
+        run: |
+          status=0
+          for field in "1.0.0" "Jonathan Bnayahu" "Primary.exe"; do
+            if ! strings -el Primary.exe | grep -qF "$field"; then
+              echo "::error::Version resource missing: $field"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: Verify the manifest is embedded
+        run: |
+          status=0
+          for field in dpiAwareness Common-Controls asInvoker; do
+            if ! strings -a Primary.exe | grep -q "$field"; then
+              echo "::error::Manifest missing: $field"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: Verify the version resource matches app_strings.h
+        run: |
+          src=$(grep -oP 'APP_VERSION_(MAJOR|MINOR|PATCH)\s+\K\d+' \
+                resources/app_strings.h | paste -sd.)
+          echo "Source version: $src"
+          strings -el Primary.exe | grep -qF "$src" || {
+            echo "::error::Binary does not report source version $src"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Primary-exe
+          path: Primary.exe
+          if-no-files-found: error
