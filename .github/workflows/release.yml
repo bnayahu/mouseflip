@@ -40,6 +40,25 @@ jobs:
             exit 1
           fi
 
+      # primary.manifest is referenced by primary.rc as an opaque file, so
+      # windres never preprocesses it and its assemblyIdentity version has to be
+      # bumped by hand. Refuse to ship a release where it disagrees with the
+      # source version. (Kept as a separate step from the tag gate above so the
+      # failure says which of the two is wrong.)
+      - name: Verify the manifest version matches the source version
+        run: |
+          maj=$(grep -oP 'APP_VERSION_MAJOR\s+\K\d+' resources/app_strings.h)
+          min=$(grep -oP 'APP_VERSION_MINOR\s+\K\d+' resources/app_strings.h)
+          pat=$(grep -oP 'APP_VERSION_PATCH\s+\K\d+' resources/app_strings.h)
+          want="$maj.$min.$pat.0"
+          got=$(grep -oP '<assemblyIdentity[^>]*\bname="Primary"[^>]*\bversion="\K[^"]+' \
+                resources/primary.manifest)
+          echo "app_strings.h: $want / manifest: ${got:-none}"
+          if [ "$got" != "$want" ]; then
+            echo "::error::resources/primary.manifest version ${got:-(not found)} does not match $want from resources/app_strings.h. Update the assemblyIdentity version."
+            exit 1
+          fi
+
       - name: Build
         shell: bash
         run: ./build.sh 2>&1 | tee build.log

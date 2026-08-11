@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <!-- NOTE: this version string is not preprocessed by windres, so it must be
-       bumped by hand alongside APP_VERSION_* in resources/app_strings.h. -->
+       bumped by hand alongside APP_VERSION_* in resources/app_strings.h.
+       Both workflows fail the build if the two disagree, so drift is caught
+       rather than shipped. Keep name= and version= on this one line: the check
+       looks for them together. -->
   <assemblyIdentity type="win32" name="Primary" version="1.0.0.0"
                     processorArchitecture="amd64"/>
 

@@ -18,6 +18,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # primary.rc references primary.manifest as an opaque file, so windres
+      # never preprocesses it and its assemblyIdentity version cannot come from
+      # app_strings.h — it has to be bumped by hand. This makes the two drifting
+      # apart fail the build instead of relying on a release-checklist step.
+      #
+      # Expects name= and version= on one line of the assemblyIdentity element;
+      # reformatting that element fails this check rather than skipping it.
+      - name: Verify the manifest version matches app_strings.h
+        run: |
+          maj=$(grep -oP 'APP_VERSION_MAJOR\s+\K\d+' resources/app_strings.h)
+          min=$(grep -oP 'APP_VERSION_MINOR\s+\K\d+' resources/app_strings.h)
+          pat=$(grep -oP 'APP_VERSION_PATCH\s+\K\d+' resources/app_strings.h)
+          # VERSIONINFO is MAJOR,MINOR,PATCH,0; the manifest mirrors that.
+          want="$maj.$min.$pat.0"
+          got=$(grep -oP '<assemblyIdentity[^>]*\bname="Primary"[^>]*\bversion="\K[^"]+' \
+                resources/primary.manifest)
+          echo "app_strings.h: $want / manifest: ${got:-none}"
+          if [ "$got" != "$want" ]; then
+            echo "::error::resources/primary.manifest version ${got:-(not found)} does not match $want from resources/app_strings.h. Update the assemblyIdentity version."
+            exit 1
+          fi
+
       - name: Install MinGW-w64
         run: |
           sudo apt-get update
