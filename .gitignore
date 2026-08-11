@@ -15,3 +15,7 @@ Desktop.ini
 *.tmp
 *.bak
 *~
+
+# Agent planning scratch
+docs/superpowers/
+*.log
