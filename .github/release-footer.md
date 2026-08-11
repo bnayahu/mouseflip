@@ -16,5 +16,5 @@ Get-FileHash Primary.exe -Algorithm SHA256
 Compare the result against `SHA256SUMS.txt` below.
 
 Built from source with MinGW-w64 on `ubuntu-latest` by
-[the release workflow](../../.github/workflows/release.yml) — you can rebuild it
+[the release workflow](https://github.com/bnayahu/primary/blob/main/.github/workflows/release.yml) — you can rebuild it
 yourself with `./build.sh`.
