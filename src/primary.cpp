@@ -517,7 +517,6 @@ INT_PTR CALLBACK OptionsDialogProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM
                         // Start or stop monitoring based on setting
                         if (autoSwitchEnabled) {
                             StartAutoSwitchMonitoring(g_hwndMain);
-                            CheckAndApplyAutoSwitch();  // Apply immediately (will detect change and apply)
                         } else {
                             StopAutoSwitchMonitoring(g_hwndMain);
                         }
@@ -529,16 +528,15 @@ INT_PTR CALLBACK OptionsDialogProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM
                                   L"Failed to update base mouse count. Please check your permissions.",
                                   L"Error",
                                   MB_ICONERROR | MB_OK);
-                    } else {
-                        // Re-check if auto-switch is enabled, to apply new settings immediately
-                        if (autoSwitchEnabled) {
-                            CheckAndApplyAutoSwitch();
-                        }
                     }
 
+                    // Single re-apply point: every setting the check reads —
+                    // direction, auto-switch flag, base device count — is
+                    // persisted by now, so one pass covers them all.
+                    //
                     // Settings may have changed the mapping without the device
                     // state changing, so discard the cached state to force the
-                    // next check to apply the new configuration.
+                    // check to apply the new configuration.
                     if (autoSwitchEnabled && autoSwitchWritten) {
                         g_lastExternalMouseState = EXTERNAL_MOUSE_UNKNOWN;
                         CheckAndApplyAutoSwitch();
