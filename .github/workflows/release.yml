@@ -32,6 +32,7 @@ jobs:
           fi
 
       - name: Build
+        shell: bash
         run: ./build.sh 2>&1 | tee build.log
 
       - name: Fail on compiler warnings
@@ -64,4 +65,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             Primary.exe SHA256SUMS.txt \
             --title "Primary $GITHUB_REF_NAME" \
-            --notes-file notes.md
+            --notes-file notes.md \
+            --verify-tag
