@@ -23,7 +23,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK OptionsDialogProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam);
 bool GetCurrentMouseState();
-void FlipMouseOrientation();
+void ApplyMouseOrientation(HWND hwnd, bool leftHanded);
 UINT GetIconForCurrentState();
 void AddTrayIcon(HWND hwnd, UINT iconID);
 void UpdateTrayIcon(HWND hwnd, UINT iconID);
@@ -79,9 +79,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         return 1;
     }
 
-    // Store window handle globally
-    g_hwndMain = hwnd;
-
     // Message loop
     MSG msg = {};
     while (GetMessage(&msg, NULL, 0, 0)) {
@@ -96,14 +93,18 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_CREATE:
+            // WM_CREATE is dispatched from inside CreateWindowEx, before it
+            // returns, so publish the handle here rather than at the call site.
+            // CheckAndApplyAutoSwitch() below needs it to update the icon.
+            g_hwndMain = hwnd;
+
             // Initialize tray icon with current system state
             AddTrayIcon(hwnd, GetIconForCurrentState());
+
             // Start auto-switch monitoring if enabled
             if (IsAutoSwitchEnabled()) {
-                // Initialize to opposite state to force initial application
-                g_lastDisplayState = !IsExternalMouseConnected();
                 StartAutoSwitchMonitoring(hwnd);
-                CheckAndApplyAutoSwitch();  // Apply immediately (will detect change and apply)
+                CheckAndApplyAutoSwitch();  // Apply immediately
             }
             return 0;
 
@@ -118,13 +119,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 case WM_LBUTTONDBLCLK:
                 case WM_RBUTTONDBLCLK:
                     // Double-click (either button): flip mouse orientation
-                    {
-                        bool currentState = GetCurrentMouseState();
-                        SwapMouseButton(!currentState);
-                        // Use the new state directly instead of reading system state again
-                        UINT newIconID = (!currentState) ? IDI_ICON_LEFT : IDI_ICON_RIGHT;
-                        UpdateTrayIcon(hwnd, newIconID);
-                    }
+                    ApplyMouseOrientation(hwnd, !GetCurrentMouseState());
                     break;
 
                 case WM_RBUTTONUP:
@@ -139,13 +134,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
                 case IDM_RIGHTHANDED:
-                    SwapMouseButton(FALSE);
-                    UpdateTrayIcon(hwnd, GetIconForCurrentState());
+                    ApplyMouseOrientation(hwnd, false);
                     break;
 
                 case IDM_LEFTHANDED:
-                    SwapMouseButton(TRUE);
-                    UpdateTrayIcon(hwnd, GetIconForCurrentState());
+                    ApplyMouseOrientation(hwnd, true);
                     break;
 
                 case IDM_OPTIONS:
@@ -179,10 +172,15 @@ bool GetCurrentMouseState() {
     return GetSystemMetrics(SM_SWAPBUTTON) != 0;
 }
 
-// Flip mouse button orientation
-void FlipMouseOrientation() {
-    bool currentState = GetCurrentMouseState();
-    SwapMouseButton(!currentState);
+// Apply a mouse orientation and update the tray icon to match.
+//
+// The icon is derived from the state we just requested, not from a fresh
+// GetSystemMetrics(SM_SWAPBUTTON) read: that metric can still report the old
+// value immediately after SwapMouseButton() returns, which would leave the
+// icon disagreeing with the actual configuration.
+void ApplyMouseOrientation(HWND hwnd, bool leftHanded) {
+    SwapMouseButton(leftHanded ? TRUE : FALSE);
+    UpdateTrayIcon(hwnd, leftHanded ? IDI_ICON_LEFT : IDI_ICON_RIGHT);
 }
 
 // Get icon resource ID based on current system state
@@ -585,18 +583,8 @@ void CheckAndApplyAutoSwitch() {
     if (externalMouseConnected != g_lastDisplayState) {
         g_lastDisplayState = externalMouseConnected;
 
-        if (externalMouseConnected) {
-            // External mouse connected → Left-handed
-            SwapMouseButton(TRUE);
-        } else {
-            // Only trackpad (no external mouse) → Right-handed
-            SwapMouseButton(FALSE);
-        }
-
-        // Update tray icon to reflect new state
-        if (g_hwndMain) {
-            UpdateTrayIcon(g_hwndMain, GetIconForCurrentState());
-        }
+        // External mouse connected → left-handed; trackpad only → right-handed.
+        ApplyMouseOrientation(g_hwndMain, externalMouseConnected);
     }
 }
 
