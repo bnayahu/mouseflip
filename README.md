@@ -4,17 +4,39 @@ A lightweight Windows system tray application that allows you to quickly toggle 
 
 **Cross-compiled on Linux using MinGW-w64 for Windows targets.**
 
+## Installation
+
+1. Download `Primary.exe` from the [latest release](https://github.com/bnayahu/primary/releases/latest).
+2. Optionally verify the download against `SHA256SUMS.txt` from the same release:
+   ```powershell
+   Get-FileHash Primary.exe -Algorithm SHA256
+   ```
+3. Run it. The icon appears in the notification area; there is no installer.
+
+> **The binary is not code-signed.** Windows SmartScreen will warn on first
+> run. Choose **More info → Run anyway**, or verify the checksum above if you
+> prefer to check before running. Alternatively, build from source — see
+> [Building from Source](#building-from-source).
+
 ## Features
 
 - **Quick Toggle**: Double-click the tray icon with either mouse button to instantly swap mouse buttons
 - **Visual Feedback**: Icon changes to reflect current mouse orientation
-- **Auto-Switch**: Automatically switches mouse orientation based on external mouse detection
-  - Right-handed when using trackpad only (no external mouse)
-  - Left-handed when external mouse is connected
+- **Auto-Switch** (enabled by default): Automatically switches mouse orientation
+  when an external mouse is connected or disconnected. Which orientation maps to
+  "external mouse connected" is configurable; the default is left-handed, with
+  right-handed when only the built-in pointing device is present.
+- **Single instance**: Launching Primary while it is already running does nothing
 - **Startup with Windows**: Optional setting to launch automatically when Windows starts
 - **Context Menu**: Right-click for menu with orientation options, settings, about dialog, and exit
 - **Lightweight**: Minimal resource usage, runs silently in system tray
 - **Native**: Pure Win32 API, no external dependencies
+
+> **On first run, Primary changes your mouse configuration.** Auto-switch is
+> enabled by default, so within about two seconds Primary sets left-handed mode
+> if it detects an external mouse and right-handed mode if it does not. To keep
+> manual control, open **Options** and untick **Auto-switch based on external
+> mouse detection**.
 
 ## Use Cases
 
@@ -73,19 +95,24 @@ If you need to build manually:
 x86_64-w64-mingw32-windres resources/primary.rc -O coff -o resources/primary.res
 
 # Compile and link
-x86_64-w64-mingw32-g++ -std=c++11 -Wall -Wextra -DUNICODE -D_UNICODE \
-     -mwindows \
+x86_64-w64-mingw32-g++ -std=c++11 -Wall -Wextra -Wno-unused-parameter \
+     -Os -DUNICODE -D_UNICODE \
+     -mwindows -municode \
      src/primary.cpp \
      resources/primary.res \
      -o Primary.exe \
-     -luser32 -lshell32 -static-libgcc -static-libstdc++
+     -luser32 -lshell32 -lcomctl32 -static-libgcc -static-libstdc++ \
+     -Wl,-s
 ```
+
+`-municode` is required: the entry point is `wWinMain`, and without it the link
+fails with `undefined reference to 'WinMain'`.
 
 ## Usage
 
 ### Running the Application
 
-1. Transfer `Primary.exe` to your Windows machine (or run via Wine on Linux)
+1. Transfer `Primary.exe` to your Windows machine
 2. Double-click `Primary.exe`
 3. The application icon will appear in your system tray (notification area)
 
@@ -107,13 +134,20 @@ Access the Options dialog by right-clicking the tray icon and selecting "Options
 - **Start Primary when Windows starts**: Enable this checkbox to automatically launch Primary when you log in to Windows. The setting is stored in the Windows registry (HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run)
 
 **Auto-Switch Settings:**
-- **Auto-switch based on external mouse detection**: (**Enabled by default**) Automatically switches mouse orientation based on connected pointing devices:
-  - **Right-handed mode**: When using only the trackpad (no external mouse detected)
-  - **Left-handed mode**: When an external mouse is connected
-  - The application monitors connected input devices every 2 seconds and switches automatically
-  - Useful for users who prefer different orientations when using external mouse vs. trackpad
-  - **To disable**: Simply uncheck this box in the Options dialog if you prefer manual control
-  - Settings stored in HKEY_CURRENT_USER\Software\Primary
+- **Auto-switch based on external mouse detection**: (**Enabled by default**)
+  Switches mouse orientation automatically as pointing devices come and go.
+  Primary polls connected input devices every 2 seconds.
+  - **When an external mouse is connected, use**: choose **Left-handed**
+    (default) or **Right-handed**. The opposite orientation applies when no
+    external mouse is present. These radio buttons are greyed out while
+    auto-switch is off.
+  - **To disable**: untick the checkbox for fully manual control.
+  - A manual choice from the tray menu holds until the next time a device is
+    connected or disconnected, at which point auto-switch applies again.
+  - If the device list cannot be read, Primary leaves the current configuration
+    alone rather than guessing.
+  - Settings are stored in `HKEY_CURRENT_USER\Software\Primary`
+    (`AutoSwitch`, `BaseMouseCount`, `ExternalMouseIsLeftHanded`).
 
 **Mouse Device Configuration:**
 - **Currently detected devices**: Shows the real-time count of mouse devices detected by the system
@@ -135,14 +169,21 @@ When you flip the mouse orientation:
 ```
 primary/
 ├── src/
-│   └── primary.cpp          # Main application source
+│   └── primary.cpp            # Main application source (single translation unit)
 ├── resources/
-│   ├── primary.rc           # Resource definition file
-│   ├── resource.h             # Resource ID constants
+│   ├── primary.rc             # Resource script: icons, dialogs, version info
+│   ├── primary.manifest       # DPI awareness, Common Controls v6, privileges
+│   ├── resource.h             # Resource and control ID constants
+│   ├── app_strings.h          # App name, version, and metadata (single source of truth)
 │   ├── app_icon.ico           # Application icon
 │   ├── icon_right.ico         # Right-handed mouse icon
 │   └── icon_left.ico          # Left-handed mouse icon
+├── .github/workflows/
+│   ├── build.yml              # Build validation on push and pull request
+│   └── release.yml            # Tag-triggered release build
 ├── build.sh                   # Build script (Linux)
+├── CHANGELOG.md               # Release history
+├── LICENSE                    # Apache License 2.0
 └── README.md                  # This file
 ```
 
@@ -206,28 +247,46 @@ The application always queries the actual system state rather than maintaining i
 - Check Windows Event Viewer for errors
 
 **Icon doesn't appear in system tray**
-- Check Windows notification settings
-- Restart Windows Explorer: `Ctrl+Shift+Esc` → Windows Explorer → Restart
-- Ensure no other instance is already running
+- Check the notification area overflow ("Show hidden icons") and Windows
+  notification settings — Windows hides new tray icons by default
+- Primary may already be running: only one instance is allowed, and starting a
+  second does nothing. Check Task Manager for an existing `Primary.exe`
+- Primary re-adds its icon automatically if Explorer restarts
 
 **Icon doesn't update when mouse buttons change**
-- Try exiting and restarting the application
-- Check if another application is interfering
+- Primary only tracks changes it makes itself plus its own auto-switch. If you
+  change the setting from Control Panel or the Settings app while Primary is
+  running, the icon updates the next time Primary changes the orientation
 
 ## Known Limitations
 
-- Icon changes require system tray refresh in some cases
-- Setting persists until changed again or system restart
-- Only affects primary mouse device on multi-mouse systems
+- The button swap is a per-user system setting and applies to **all** pointing
+  devices at once. Windows offers no way to swap buttons for one mouse only, so
+  Primary cannot provide per-device orientation.
+- The swap does not survive a reboot unless auto-switch reapplies it, because
+  `SwapMouseButton()` sets the live session state rather than the persisted
+  Control Panel value.
+- External-mouse detection counts mouse-class input devices. Some docks and
+  virtual-KVM drivers register phantom devices; the **Base device count**
+  setting exists to compensate.
+- The released binary is not code-signed, so SmartScreen warns on first run.
 
 ## Contributing
 
-Feel free to fork and modify the code for your needs. Suggestions for improvements:
+Issues and pull requests are welcome at
+[github.com/bnayahu/primary](https://github.com/bnayahu/primary).
+
+All commits must carry a Developer Certificate of Origin sign-off — commit with
+`git commit -s` — and CI must pass, which requires a warning-free build.
+
+Ideas that would be welcome:
 - Keyboard shortcut support
-- Notification on orientation change
-- Sound feedback option
+- Optional notification on orientation change
+- Per-application orientation profiles
 
-## Credits
+## License
 
-Primary - A utility application for quick mouse button configuration changes.
-Built with MinGW-w64 cross-compiler on Linux.
+Copyright 2026 Jonathan Bnayahu
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the
+full text. Built with the MinGW-w64 cross-compiler on Linux.
