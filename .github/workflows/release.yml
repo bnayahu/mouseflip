@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MinGW-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64
+
+      # A binary that misreports its own version is worse than a failed
+      # release, so this gate is hard.
+      - name: Verify the tag matches the source version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          src=$(grep -oP 'APP_VERSION_(MAJOR|MINOR|PATCH)\s+\K\d+' \
+                resources/app_strings.h | paste -sd.)
+          echo "Tag: $tag / source: $src"
+          if [ "$tag" != "$src" ]; then
+            echo "::error::Tag $tag does not match source version $src. Bump APP_VERSION_* in resources/app_strings.h."
+            exit 1
+          fi
+
+      - name: Build
+        run: ./build.sh 2>&1 | tee build.log
+
+      - name: Fail on compiler warnings
+        run: |
+          if grep -i "warning:" build.log; then
+            echo "::error::Build produced compiler warnings"
+            exit 1
+          fi
+
+      - name: Verify the binary reports the release version
+        run: |
+          strings -el Primary.exe | grep -qF "${GITHUB_REF_NAME#v}" || {
+            echo "::error::Binary does not report ${GITHUB_REF_NAME#v}"; exit 1; }
+
+      - name: Generate checksums
+        run: sha256sum Primary.exe > SHA256SUMS.txt
+
+      - name: Assemble release notes
+        run: |
+          # First "## [" section of the CHANGELOG, plus the standing footer
+          awk '/^## \[/{n++} n==1' CHANGELOG.md > notes.md
+          cat .github/release-footer.md >> notes.md
+          echo "--- notes.md ---"
+          cat notes.md
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            Primary.exe SHA256SUMS.txt \
+            --title "Primary $GITHUB_REF_NAME" \
+            --notes-file notes.md
