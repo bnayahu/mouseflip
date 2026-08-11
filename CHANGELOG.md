@@ -41,7 +41,7 @@ First public release.
 
 - Dialogs use Segoe UI 9 and themed controls instead of MS Sans Serif 8.
 - The binary is built with `-Os` and stripped, reducing it from 376 KB to
-  about 114 KB.
+  about 119 KB.
 
 ### Removed
 

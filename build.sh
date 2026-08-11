@@ -25,7 +25,7 @@ echo "Compiling resources..."
 
 # Compile and link
 #   -municode      : entry point is wWinMain; omitting this fails to link
-#   -Os -Wl,-s     : optimise for size and strip symbols (~376K -> ~114K)
+#   -Os -Wl,-s     : optimise for size and strip symbols (~376K -> ~119K)
 #   -mwindows      : GUI subsystem, no console window
 echo "Compiling application..."
 "$GCC" -std=c++11 -Wall -Wextra -Wno-unused-parameter \

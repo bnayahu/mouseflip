@@ -178,9 +178,11 @@ primary/
 │   ├── app_icon.ico           # Application icon
 │   ├── icon_right.ico         # Right-handed mouse icon
 │   └── icon_left.ico          # Left-handed mouse icon
-├── .github/workflows/
-│   ├── build.yml              # Build validation on push and pull request
-│   └── release.yml            # Tag-triggered release build
+├── .github/
+│   ├── release-footer.md      # Standing notes appended to every release
+│   └── workflows/
+│       ├── build.yml          # Build validation on push and pull request
+│       └── release.yml        # Tag-triggered release build
 ├── build.sh                   # Build script (Linux)
 ├── CHANGELOG.md               # Release history
 ├── LICENSE                    # Apache License 2.0
@@ -211,7 +213,7 @@ primary/
 - GCC/G++ compiler with Windows headers
 
 ### State Management
-The application always queries the actual system state rather than maintaining internal state. This ensures the icon accurately reflects the current mouse configuration even if changed by other means (Control Panel, Settings app, other applications).
+Primary derives the tray icon from the orientation it just applied, rather than re-reading `GetSystemMetrics(SM_SWAPBUTTON)` — that metric can still report the old value immediately after `SwapMouseButton()` returns, which would leave the icon disagreeing with the actual configuration. The icon is read from live system state only when it is first added and when it is re-added after an Explorer restart. Primary does not watch for orientation changes made outside the app; if you change the setting from Control Panel or the Settings app, the icon updates the next time Primary changes the orientation itself.
 
 ## Compiler Flags Explained
 
