@@ -1,3 +1,6 @@
+// Copyright 2026 Jonathan Bnayahu
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef UNICODE
 #define UNICODE
 #endif

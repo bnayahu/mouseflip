@@ -1,3 +1,6 @@
+// Copyright 2026 Jonathan Bnayahu
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef RESOURCE_H
 #define RESOURCE_H
 

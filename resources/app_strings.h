@@ -1,3 +1,6 @@
+// Copyright 2026 Jonathan Bnayahu
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef APP_STRINGS_H
 #define APP_STRINGS_H
 

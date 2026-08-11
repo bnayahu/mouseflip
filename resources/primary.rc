@@ -1,3 +1,6 @@
+// Copyright 2026 Jonathan Bnayahu
+// SPDX-License-Identifier: Apache-2.0
+
 #include <windows.h>
 #include "resource.h"
 #include "app_strings.h"
