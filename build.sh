@@ -26,6 +26,6 @@ $GCC -std=c++11 -Wall -Wextra -Wno-unused-parameter -DUNICODE -D_UNICODE \
      src/primary.cpp \
      resources/primary.res \
      -o Primary.exe \
-     -luser32 -lshell32 -static-libgcc -static-libstdc++
+     -luser32 -lshell32 -lcomctl32 -static-libgcc -static-libstdc++
 
 echo "Build successful! Output: Primary.exe"

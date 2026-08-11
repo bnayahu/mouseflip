@@ -2,42 +2,81 @@
 #include "resource.h"
 #include "app_strings.h"
 
+// Application manifest (CREATEPROCESS_MANIFEST_RESOURCE_ID == 1):
+// DPI awareness, Common Controls v6, asInvoker privileges
+1 RT_MANIFEST "primary.manifest"
+
 // Icons
 IDI_ICON_RIGHT ICON "icon_right.ico"
 IDI_ICON_LEFT  ICON "icon_left.ico"
 IDI_ICON_APP   ICON "app_icon.ico"
 
-// Options Dialog
-IDD_OPTIONS DIALOG 0, 0, 260, 220
-STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION APP_OPTIONS_DIALOG_CAPTION
-FONT 8, "MS Sans Serif"
+// Version resource — populated from resources/app_strings.h
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION    APP_VERSION_MAJOR, APP_VERSION_MINOR, APP_VERSION_PATCH, 0
+ PRODUCTVERSION APP_VERSION_MAJOR, APP_VERSION_MINOR, APP_VERSION_PATCH, 0
+ FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
+ FILEFLAGS      0
+ FILEOS         VOS_NT_WINDOWS32
+ FILETYPE       VFT_APP
+ FILESUBTYPE    VFT2_UNKNOWN
 BEGIN
-    GROUPBOX        "Startup", -1, 7, 7, 246, 40
-    AUTOCHECKBOX    APP_STARTUP_CHECKBOX_TEXT, IDC_STARTUP_CHECKBOX, 15, 22, 230, 10
-    GROUPBOX        "Auto-Switch", -1, 7, 52, 246, 82
-    AUTOCHECKBOX    "Auto-switch based on external mouse detection", IDC_AUTOSWITCH_CHECKBOX, 15, 64, 230, 10
-    LTEXT           "When an external mouse is connected, use:", -1, 25, 79, 220, 10
-    AUTORADIOBUTTON "Left-handed", IDC_EXTERNAL_LEFT_RADIO, 33, 93, 90, 10, WS_GROUP | WS_TABSTOP
-    AUTORADIOBUTTON "Right-handed", IDC_EXTERNAL_RIGHT_RADIO, 128, 93, 90, 10
-    LTEXT           "(the opposite applies when no external mouse is present)", -1, 25, 110, 225, 10
-    GROUPBOX        "Mouse Device Configuration", -1, 7, 137, 246, 55
-    LTEXT           "Currently detected devices:", -1, 15, 152, 100, 10
-    LTEXT           "0", IDC_DETECTED_DEVICES_LABEL, 120, 152, 30, 10
-    LTEXT           "Base device count (undocked):", IDC_BASE_DEVICES_LABEL, 15, 167, 105, 10
-    EDITTEXT        IDC_BASE_DEVICES_EDIT, 120, 165, 30, 12, ES_NUMBER
-    LTEXT           "(devices above this count are considered external)", -1, 15, 180, 230, 10
-    DEFPUSHBUTTON   "OK", IDOK, 70, 200, 50, 14
-    PUSHBUTTON      "Cancel", IDCANCEL, 140, 200, 50, 14
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"    // US English, Unicode
+        BEGIN
+            VALUE "CompanyName",      APP_AUTHOR_A
+            VALUE "FileDescription",  APP_DESCRIPTION_A
+            VALUE "FileVersion",      APP_VERSION_A
+            VALUE "InternalName",     APP_NAME_A
+            VALUE "LegalCopyright",   APP_COPYRIGHT_A
+            VALUE "OriginalFilename", APP_NAME_A ".exe"
+            VALUE "ProductName",      APP_NAME_A
+            VALUE "ProductVersion",   APP_VERSION_A
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 0x04B0
+    END
+END
+
+// Options Dialog
+// Geometry is sized for Segoe UI 9; a dialog unit is larger than it was under
+// MS Sans Serif 8, so coordinates are scaled up from the original layout.
+IDD_OPTIONS DIALOGEX 0, 0, 268, 232
+STYLE DS_SHELLFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION APP_OPTIONS_DIALOG_CAPTION
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "Startup", -1, 7, 7, 254, 40
+    AUTOCHECKBOX    APP_STARTUP_CHECKBOX_TEXT, IDC_STARTUP_CHECKBOX, 15, 24, 238, 10
+
+    GROUPBOX        "Auto-Switch", -1, 7, 52, 254, 82
+    AUTOCHECKBOX    "Auto-switch based on external mouse detection", IDC_AUTOSWITCH_CHECKBOX, 15, 64, 238, 10
+    LTEXT           "When an external mouse is connected, use:", -1, 25, 79, 228, 10
+    AUTORADIOBUTTON "Left-handed", IDC_EXTERNAL_LEFT_RADIO, 33, 93, 95, 10, WS_GROUP | WS_TABSTOP
+    AUTORADIOBUTTON "Right-handed", IDC_EXTERNAL_RIGHT_RADIO, 136, 93, 95, 10
+    LTEXT           "(the opposite applies when no external mouse is present)", -1, 25, 110, 228, 10
+
+    GROUPBOX        "Mouse Device Configuration", -1, 7, 140, 254, 58
+    LTEXT           "Currently detected devices:", -1, 15, 155, 105, 10
+    LTEXT           "0", IDC_DETECTED_DEVICES_LABEL, 125, 155, 50, 10
+    LTEXT           "Base device count (undocked):", IDC_BASE_DEVICES_LABEL, 15, 170, 108, 10
+    EDITTEXT        IDC_BASE_DEVICES_EDIT, 125, 168, 30, 12, ES_NUMBER
+    LTEXT           "(devices above this count are considered external)", -1, 15, 184, 240, 10
+
+    DEFPUSHBUTTON   "OK", IDOK, 78, 206, 54, 15
+    PUSHBUTTON      "Cancel", IDCANCEL, 140, 206, 54, 15
 END
 
 // About Dialog
-IDD_ABOUT DIALOG 0, 0, 240, 120
-STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+IDD_ABOUT DIALOGEX 0, 0, 248, 136
+STYLE DS_SHELLFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION APP_ABOUT_DIALOG_CAPTION
-FONT 8, "MS Sans Serif"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     ICON            IDI_ICON_APP, IDC_ABOUT_ICON, 14, 14, 32, 32
-    LTEXT           "", IDC_ABOUT_TEXT, 60, 14, 170, 80
-    DEFPUSHBUTTON   "OK", IDOK, 95, 100, 50, 14
+    LTEXT           "", IDC_ABOUT_TEXT, 60, 14, 178, 92
+    DEFPUSHBUTTON   "OK", IDOK, 97, 112, 54, 15
 END

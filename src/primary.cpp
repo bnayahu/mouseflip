@@ -5,6 +5,8 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <new>
+#include <commctrl.h>
+#include <strsafe.h>
 #include "../resources/resource.h"
 #include "../resources/app_strings.h"
 
@@ -77,6 +79,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         CloseHandle(hInstanceMutex);
         return 0;
     }
+
+    // Pair with the Common Controls v6 dependency in the manifest so dialog
+    // controls are themed.
+    INITCOMMONCONTROLSEX icc = {};
+    icc.dwSize = sizeof(icc);
+    icc.dwICC = ICC_STANDARD_CLASSES;
+    InitCommonControlsEx(&icc);
 
     // Must be registered before the window exists so WndProc can recognise it.
     g_uTaskbarCreatedMsg = RegisterWindowMessage(L"TaskbarCreated");
@@ -307,15 +316,18 @@ void UpdateMenuChecks(HMENU hMenu) {
 INT_PTR CALLBACK AboutDialogProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_INITDIALOG: {
-            // Set the about text
-            wchar_t message[256];
-            wsprintf(message,
-                     L"%s v%s\n\n"
-                     L"Quickly toggle mouse button configuration\n"
-                     L"between right-handed and left-handed modes.\n\n"
-                     L"Double-click the tray icon with either button to flip.\n"
-                     L"Right-click for menu.",
-                     APP_NAME, APP_VERSION);
+            // Set the about text. StringCchPrintf always null-terminates, even
+            // on truncation, unlike wsprintf which has no bounds at all.
+            wchar_t message[512];
+            StringCchPrintf(message, ARRAYSIZE(message),
+                            L"%s v%s\n\n"
+                            L"Quickly toggle mouse button configuration\n"
+                            L"between right-handed and left-handed modes.\n\n"
+                            L"Double-click the tray icon with either button to flip.\n"
+                            L"Right-click for menu.\n\n"
+                            L"%s\n"
+                            L"Licensed under the Apache License 2.0.",
+                            APP_NAME, APP_VERSION, APP_COPYRIGHT);
             SetDlgItemText(hwndDlg, IDC_ABOUT_TEXT, message);
             return TRUE;
         }
@@ -431,13 +443,13 @@ INT_PTR CALLBACK OptionsDialogProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM
             if (detectedCount < 0) {
                 SetDlgItemText(hwndDlg, IDC_DETECTED_DEVICES_LABEL, L"unknown");
             } else {
-                wsprintf(countStr, L"%d", detectedCount);
+                StringCchPrintf(countStr, ARRAYSIZE(countStr), L"%d", detectedCount);
                 SetDlgItemText(hwndDlg, IDC_DETECTED_DEVICES_LABEL, countStr);
             }
 
             // Set base mouse count in edit control
             int baseCount = GetBaseMouseCount();
-            wsprintf(countStr, L"%d", baseCount);
+            StringCchPrintf(countStr, ARRAYSIZE(countStr), L"%d", baseCount);
             SetDlgItemText(hwndDlg, IDC_BASE_DEVICES_EDIT, countStr);
 
             return TRUE;
