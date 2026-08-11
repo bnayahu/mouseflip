@@ -4,6 +4,7 @@
 
 #include <windows.h>
 #include <shellapi.h>
+#include <new>
 #include "../resources/resource.h"
 #include "../resources/app_strings.h"
 
@@ -16,7 +17,17 @@ const wchar_t* AUTOSWITCH_VALUE = L"AutoSwitch";
 const wchar_t* BASE_MOUSE_COUNT_VALUE = L"BaseMouseCount";
 NOTIFYICONDATA g_nid = {};
 HWND g_hwndMain = NULL;
-bool g_lastDisplayState = false;  // Track last external mouse connection state
+// Tri-state result of the external-mouse check. UNKNOWN means enumeration
+// failed and no conclusion should be drawn from it.
+enum ExternalMouseState {
+    EXTERNAL_MOUSE_UNKNOWN = -1,
+    EXTERNAL_MOUSE_ABSENT  = 0,
+    EXTERNAL_MOUSE_PRESENT = 1
+};
+
+// Last observed external-mouse state. Starts UNKNOWN so the first successful
+// check always differs from it and applies the correct orientation.
+ExternalMouseState g_lastExternalMouseState = EXTERNAL_MOUSE_UNKNOWN;
 
 // Forward declarations
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -39,7 +50,7 @@ bool SetAutoSwitchEnabled(bool enable);
 int GetCurrentMouseDeviceCount();
 int GetBaseMouseCount();
 bool SetBaseMouseCount(int count);
-bool IsExternalMouseConnected();
+ExternalMouseState GetExternalMouseState();
 void CheckAndApplyAutoSwitch();
 void StartAutoSwitchMonitoring(HWND hwnd);
 void StopAutoSwitchMonitoring(HWND hwnd);
@@ -354,10 +365,14 @@ INT_PTR CALLBACK OptionsDialogProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM
                           IsAutoSwitchEnabled() ? BST_CHECKED : BST_UNCHECKED);
 
             // Display current detected mouse device count
-            int detectedCount = GetCurrentMouseDeviceCount();
             wchar_t countStr[16];
-            wsprintf(countStr, L"%d", detectedCount);
-            SetDlgItemText(hwndDlg, IDC_DETECTED_DEVICES_LABEL, countStr);
+            int detectedCount = GetCurrentMouseDeviceCount();
+            if (detectedCount < 0) {
+                SetDlgItemText(hwndDlg, IDC_DETECTED_DEVICES_LABEL, L"unknown");
+            } else {
+                wsprintf(countStr, L"%d", detectedCount);
+                SetDlgItemText(hwndDlg, IDC_DETECTED_DEVICES_LABEL, countStr);
+            }
 
             // Set base mouse count in edit control
             int baseCount = GetBaseMouseCount();
@@ -535,61 +550,88 @@ bool SetBaseMouseCount(int count) {
     return success;
 }
 
-// Get the current number of mouse devices detected
+// Get the current number of mouse devices detected, or -1 if the device list
+// could not be enumerated.
+//
+// GetRawInputDeviceList is inherently racy: it must be called once to size the
+// buffer and again to fill it, and a device arriving in between makes the
+// second call fail with ERROR_INSUFFICIENT_BUFFER. That is a transient
+// condition, not an absence of mice, so it is retried rather than reported as
+// zero — reporting zero would make auto-switch flip the user's buttons.
 int GetCurrentMouseDeviceCount() {
-    // Get the number of raw input devices
-    UINT numDevices = 0;
-    if (GetRawInputDeviceList(NULL, &numDevices, sizeof(RAWINPUTDEVICELIST)) != 0) {
-        return 0;  // Error getting device count
-    }
-
-    if (numDevices == 0) {
-        return 0;  // No devices
-    }
-
-    // Allocate buffer for device list
-    RAWINPUTDEVICELIST* deviceList = new RAWINPUTDEVICELIST[numDevices];
-    if (GetRawInputDeviceList(deviceList, &numDevices, sizeof(RAWINPUTDEVICELIST)) == (UINT)-1) {
-        delete[] deviceList;
-        return 0;  // Error getting device list
-    }
-
-    // Count mouse devices
-    int mouseCount = 0;
-    for (UINT i = 0; i < numDevices; i++) {
-        if (deviceList[i].dwType == RIM_TYPEMOUSE) {
-            mouseCount++;
+    for (int attempt = 0; attempt < 3; attempt++) {
+        UINT numDevices = 0;
+        if (GetRawInputDeviceList(NULL, &numDevices, sizeof(RAWINPUTDEVICELIST)) != 0) {
+            return -1;  // Could not determine how many devices exist
         }
+
+        if (numDevices == 0) {
+            return 0;  // Genuinely no input devices
+        }
+
+        RAWINPUTDEVICELIST* deviceList = new (std::nothrow) RAWINPUTDEVICELIST[numDevices];
+        if (deviceList == NULL) {
+            return -1;
+        }
+
+        UINT count = numDevices;
+        UINT result = GetRawInputDeviceList(deviceList, &count, sizeof(RAWINPUTDEVICELIST));
+        if (result == (UINT)-1) {
+            DWORD error = GetLastError();
+            delete[] deviceList;
+            if (error == ERROR_INSUFFICIENT_BUFFER) {
+                continue;  // Device list grew; size it again and retry
+            }
+            return -1;
+        }
+
+        int mouseCount = 0;
+        for (UINT i = 0; i < result; i++) {
+            if (deviceList[i].dwType == RIM_TYPEMOUSE) {
+                mouseCount++;
+            }
+        }
+
+        delete[] deviceList;
+        return mouseCount;
     }
 
-    delete[] deviceList;
-    return mouseCount;
+    return -1;  // Device list kept changing under us
 }
 
-// Check if an external mouse is connected
-bool IsExternalMouseConnected() {
+// Determine whether an external mouse is connected.
+// Returns UNKNOWN if the device list could not be read, in which case callers
+// must not change the mouse configuration.
+ExternalMouseState GetExternalMouseState() {
     int currentCount = GetCurrentMouseDeviceCount();
-    int baseCount = GetBaseMouseCount();
+    if (currentCount < 0) {
+        return EXTERNAL_MOUSE_UNKNOWN;
+    }
 
-    // If current count exceeds base count, we have external mouse(s)
-    return (currentCount > baseCount);
+    // Devices above the configured base count are external mice.
+    return (currentCount > GetBaseMouseCount())
+        ? EXTERNAL_MOUSE_PRESENT
+        : EXTERNAL_MOUSE_ABSENT;
 }
 
-// Check if external mouse is connected and apply appropriate mouse configuration
+// Check whether an external mouse is connected and apply the matching
+// mouse configuration.
 void CheckAndApplyAutoSwitch() {
-    bool externalMouseConnected = IsExternalMouseConnected();
+    ExternalMouseState state = GetExternalMouseState();
 
-    // Only switch if the state has changed to avoid unnecessary operations
-    if (externalMouseConnected != g_lastDisplayState) {
-        g_lastDisplayState = externalMouseConnected;
-
-        // External mouse connected → left-handed; trackpad only → right-handed.
-        ApplyMouseOrientation(g_hwndMain, externalMouseConnected);
+    // Hold the current configuration if enumeration failed, and do nothing if
+    // the state has not changed.
+    if (state == EXTERNAL_MOUSE_UNKNOWN || state == g_lastExternalMouseState) {
+        return;
     }
+
+    g_lastExternalMouseState = state;
+
+    // External mouse connected → left-handed; trackpad only → right-handed.
+    ApplyMouseOrientation(g_hwndMain, state == EXTERNAL_MOUSE_PRESENT);
 }
 
 // Start auto-switch monitoring
-// Note: g_lastDisplayState should be initialized by caller before calling this
 void StartAutoSwitchMonitoring(HWND hwnd) {
     // Set timer to check every 2 seconds
     SetTimer(hwnd, TIMER_AUTOSWITCH, 2000, NULL);
