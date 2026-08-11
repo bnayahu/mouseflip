@@ -15,6 +15,7 @@ const wchar_t* REGISTRY_VALUE = APP_REGISTRY_VALUE;
 const wchar_t* SETTINGS_REGISTRY_KEY = APP_SETTINGS_REGISTRY_KEY;
 const wchar_t* AUTOSWITCH_VALUE = L"AutoSwitch";
 const wchar_t* BASE_MOUSE_COUNT_VALUE = L"BaseMouseCount";
+const wchar_t* EXTERNAL_MOUSE_LEFTHANDED_VALUE = L"ExternalMouseIsLeftHanded";
 // Session-local (no "Global\" prefix): the tray is per-session, so each user
 // or remote-desktop session gets its own instance.
 const wchar_t* MUTEX_NAME = APP_NAME L"-SingleInstance";
@@ -57,6 +58,8 @@ bool SetAutoSwitchEnabled(bool enable);
 int GetCurrentMouseDeviceCount();
 int GetBaseMouseCount();
 bool SetBaseMouseCount(int count);
+bool IsExternalMouseLeftHanded();
+bool SetExternalMouseLeftHanded(bool leftHanded);
 ExternalMouseState GetExternalMouseState();
 void CheckAndApplyAutoSwitch();
 void StartAutoSwitchMonitoring(HWND hwnd);
@@ -409,6 +412,19 @@ INT_PTR CALLBACK OptionsDialogProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM
             CheckDlgButton(hwndDlg, IDC_AUTOSWITCH_CHECKBOX,
                           IsAutoSwitchEnabled() ? BST_CHECKED : BST_UNCHECKED);
 
+            // Direction radios: exactly one is always selected.
+            CheckRadioButton(hwndDlg,
+                             IDC_EXTERNAL_LEFT_RADIO, IDC_EXTERNAL_RIGHT_RADIO,
+                             IsExternalMouseLeftHanded() ? IDC_EXTERNAL_LEFT_RADIO
+                                                         : IDC_EXTERNAL_RIGHT_RADIO);
+
+            // The direction only means anything while auto-switch is on.
+            {
+                BOOL autoSwitchOn = (IsDlgButtonChecked(hwndDlg, IDC_AUTOSWITCH_CHECKBOX) == BST_CHECKED);
+                EnableWindow(GetDlgItem(hwndDlg, IDC_EXTERNAL_LEFT_RADIO), autoSwitchOn);
+                EnableWindow(GetDlgItem(hwndDlg, IDC_EXTERNAL_RIGHT_RADIO), autoSwitchOn);
+            }
+
             // Display current detected mouse device count
             wchar_t countStr[16];
             int detectedCount = GetCurrentMouseDeviceCount();
@@ -429,10 +445,21 @@ INT_PTR CALLBACK OptionsDialogProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM
 
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
+                case IDC_AUTOSWITCH_CHECKBOX: {
+                    // Keep the direction radios greyed out while auto-switch
+                    // is off, so the setting cannot look active when it isn't.
+                    BOOL autoSwitchOn = (IsDlgButtonChecked(hwndDlg, IDC_AUTOSWITCH_CHECKBOX) == BST_CHECKED);
+                    EnableWindow(GetDlgItem(hwndDlg, IDC_EXTERNAL_LEFT_RADIO), autoSwitchOn);
+                    EnableWindow(GetDlgItem(hwndDlg, IDC_EXTERNAL_RIGHT_RADIO), autoSwitchOn);
+                    return TRUE;
+                }
+
                 case IDOK: {
                     // Get checkbox states
                     bool startupEnabled = (IsDlgButtonChecked(hwndDlg, IDC_STARTUP_CHECKBOX) == BST_CHECKED);
                     bool autoSwitchEnabled = (IsDlgButtonChecked(hwndDlg, IDC_AUTOSWITCH_CHECKBOX) == BST_CHECKED);
+                    bool externalIsLeftHanded =
+                        (IsDlgButtonChecked(hwndDlg, IDC_EXTERNAL_LEFT_RADIO) == BST_CHECKED);
 
                     // Get base mouse count from edit control
                     wchar_t countStr[16];
@@ -452,6 +479,15 @@ INT_PTR CALLBACK OptionsDialogProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM
                     if (!SetStartupEnabled(startupEnabled)) {
                         MessageBox(hwndDlg,
                                   L"Failed to update startup settings. Please check your permissions.",
+                                  L"Error",
+                                  MB_ICONERROR | MB_OK);
+                    }
+
+                    // Write the direction before applying auto-switch, so the
+                    // immediate re-check below uses the new value.
+                    if (!SetExternalMouseLeftHanded(externalIsLeftHanded)) {
+                        MessageBox(hwndDlg,
+                                  L"Failed to update the auto-switch direction. Please check your permissions.",
                                   L"Error",
                                   MB_ICONERROR | MB_OK);
                     }
@@ -483,6 +519,14 @@ INT_PTR CALLBACK OptionsDialogProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM
                         if (autoSwitchEnabled) {
                             CheckAndApplyAutoSwitch();
                         }
+                    }
+
+                    // Settings may have changed the mapping without the device
+                    // state changing, so discard the cached state to force the
+                    // next check to apply the new configuration.
+                    if (autoSwitchEnabled) {
+                        g_lastExternalMouseState = EXTERNAL_MOUSE_UNKNOWN;
+                        CheckAndApplyAutoSwitch();
                     }
 
                     EndDialog(hwndDlg, IDOK);
@@ -595,6 +639,50 @@ bool SetBaseMouseCount(int count) {
     return success;
 }
 
+// Which orientation to use when an external mouse is connected (default: true,
+// meaning left-handed, which matches the behaviour before this was settable).
+bool IsExternalMouseLeftHanded() {
+    HKEY hKey;
+    bool leftHanded = true;
+
+    if (RegOpenKeyEx(HKEY_CURRENT_USER, SETTINGS_REGISTRY_KEY, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        DWORD value = 1;
+        DWORD size = sizeof(value);
+        DWORD type;
+
+        if (RegQueryValueEx(hKey, EXTERNAL_MOUSE_LEFTHANDED_VALUE, NULL, &type,
+                            (LPBYTE)&value, &size) == ERROR_SUCCESS) {
+            if (type == REG_DWORD) {
+                leftHanded = (value != 0);
+            }
+        }
+
+        RegCloseKey(hKey);
+    }
+
+    return leftHanded;
+}
+
+// Set which orientation an external mouse maps to.
+bool SetExternalMouseLeftHanded(bool leftHanded) {
+    HKEY hKey;
+    bool success = false;
+    DWORD disposition;
+
+    if (RegCreateKeyEx(HKEY_CURRENT_USER, SETTINGS_REGISTRY_KEY, 0, NULL, 0,
+                       KEY_WRITE, NULL, &hKey, &disposition) == ERROR_SUCCESS) {
+        DWORD value = leftHanded ? 1 : 0;
+        if (RegSetValueEx(hKey, EXTERNAL_MOUSE_LEFTHANDED_VALUE, 0, REG_DWORD,
+                          (LPBYTE)&value, sizeof(value)) == ERROR_SUCCESS) {
+            success = true;
+        }
+
+        RegCloseKey(hKey);
+    }
+
+    return success;
+}
+
 // Get the current number of mouse devices detected, or -1 if the device list
 // could not be enumerated.
 //
@@ -672,8 +760,14 @@ void CheckAndApplyAutoSwitch() {
 
     g_lastExternalMouseState = state;
 
-    // External mouse connected → left-handed; trackpad only → right-handed.
-    ApplyMouseOrientation(g_hwndMain, state == EXTERNAL_MOUSE_PRESENT);
+    // One orientation is configured for "external mouse connected"; the
+    // opposite applies when only the built-in pointing device is present.
+    bool externalIsLeftHanded = IsExternalMouseLeftHanded();
+    bool leftHanded = (state == EXTERNAL_MOUSE_PRESENT)
+        ? externalIsLeftHanded
+        : !externalIsLeftHanded;
+
+    ApplyMouseOrientation(g_hwndMain, leftHanded);
 }
 
 // Start auto-switch monitoring

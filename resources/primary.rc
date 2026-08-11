@@ -15,11 +15,12 @@ FONT 8, "MS Sans Serif"
 BEGIN
     GROUPBOX        "Startup", -1, 7, 7, 246, 40
     AUTOCHECKBOX    APP_STARTUP_CHECKBOX_TEXT, IDC_STARTUP_CHECKBOX, 15, 22, 230, 10
-    GROUPBOX        "Auto-Switch", -1, 7, 52, 246, 80
-    AUTOCHECKBOX    "Auto-switch based on external mouse detection:", IDC_AUTOSWITCH_CHECKBOX, 15, 67, 230, 10
-    LTEXT           "* Right-handed when using trackpad only", -1, 25, 82, 220, 10
-    LTEXT           "* Left-handed when external mouse connected", -1, 25, 95, 220, 10
-    LTEXT           "", -1, 25, 108, 220, 10
+    GROUPBOX        "Auto-Switch", -1, 7, 52, 246, 82
+    AUTOCHECKBOX    "Auto-switch based on external mouse detection", IDC_AUTOSWITCH_CHECKBOX, 15, 64, 230, 10
+    LTEXT           "When an external mouse is connected, use:", -1, 25, 79, 220, 10
+    AUTORADIOBUTTON "Left-handed", IDC_EXTERNAL_LEFT_RADIO, 33, 93, 90, 10, WS_GROUP | WS_TABSTOP
+    AUTORADIOBUTTON "Right-handed", IDC_EXTERNAL_RIGHT_RADIO, 128, 93, 90, 10
+    LTEXT           "(the opposite applies when no external mouse is present)", -1, 25, 110, 225, 10
     GROUPBOX        "Mouse Device Configuration", -1, 7, 137, 246, 55
     LTEXT           "Currently detected devices:", -1, 15, 152, 100, 10
     LTEXT           "0", IDC_DETECTED_DEVICES_LABEL, 120, 152, 30, 10
