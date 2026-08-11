@@ -15,6 +15,9 @@ const wchar_t* REGISTRY_VALUE = APP_REGISTRY_VALUE;
 const wchar_t* SETTINGS_REGISTRY_KEY = APP_SETTINGS_REGISTRY_KEY;
 const wchar_t* AUTOSWITCH_VALUE = L"AutoSwitch";
 const wchar_t* BASE_MOUSE_COUNT_VALUE = L"BaseMouseCount";
+// Session-local (no "Global\" prefix): the tray is per-session, so each user
+// or remote-desktop session gets its own instance.
+const wchar_t* MUTEX_NAME = APP_NAME L"-SingleInstance";
 NOTIFYICONDATA g_nid = {};
 HWND g_hwndMain = NULL;
 // Tri-state result of the external-mouse check. UNKNOWN means enumeration
@@ -58,6 +61,16 @@ wchar_t* GetExecutablePath();
 
 // Entry point
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
+    // Refuse to start a second instance. A second tray icon would duplicate
+    // the menu and run a second auto-switch timer against the same setting.
+    HANDLE hInstanceMutex = CreateMutex(NULL, TRUE, MUTEX_NAME);
+    if (hInstanceMutex != NULL && GetLastError() == ERROR_ALREADY_EXISTS) {
+        // Already running. There is no window to bring forward, so exit
+        // quietly rather than nagging the user on every login.
+        CloseHandle(hInstanceMutex);
+        return 0;
+    }
+
     // Register window class
     WNDCLASSEX wc = {};
     wc.cbSize = sizeof(WNDCLASSEX);
@@ -69,6 +82,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
     if (!RegisterClassEx(&wc)) {
         MessageBox(NULL, L"Window registration failed!", APP_NAME, MB_ICONERROR | MB_OK);
+        if (hInstanceMutex) {
+            ReleaseMutex(hInstanceMutex);
+            CloseHandle(hInstanceMutex);
+        }
         return 1;
     }
 
@@ -87,6 +104,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
     if (hwnd == NULL) {
         MessageBox(NULL, L"Window creation failed!", APP_NAME, MB_ICONERROR | MB_OK);
+        if (hInstanceMutex) {
+            ReleaseMutex(hInstanceMutex);
+            CloseHandle(hInstanceMutex);
+        }
         return 1;
     }
 
@@ -95,6 +116,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     while (GetMessage(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
+    }
+
+    if (hInstanceMutex) {
+        ReleaseMutex(hInstanceMutex);
+        CloseHandle(hInstanceMutex);
     }
 
     return (int)msg.wParam;
