@@ -86,12 +86,52 @@ jobs:
           echo "--- notes.md ---"
           cat notes.md
 
-      - name: Create the GitHub release
+      # Publishing is split across three steps so a failed asset upload cannot
+      # leave a *published* release with missing or truncated downloads. The
+      # release object starts as a draft — hidden from users and from the
+      # "latest release" API — and is only published after both assets are
+      # confirmed attached.
+      #
+      # If a step fails, the draft is left behind for inspection; delete it with
+      # `gh release delete "$TAG"` (the tag itself survives, so a fixed rerun of
+      # this workflow needs no re-tagging).
+      - name: Create the release as a draft
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            Primary.exe SHA256SUMS.txt \
+            --draft \
             --title "Primary $GITHUB_REF_NAME" \
             --notes-file notes.md \
             --verify-tag
+
+      # --clobber so a rerun after a partial upload replaces the incomplete
+      # asset instead of failing on "already exists".
+      - name: Upload the release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            Primary.exe SHA256SUMS.txt \
+            --clobber
+
+      # An asset counts only if GitHub reports it fully uploaded *and* its size
+      # matches the local file, which catches a truncated upload as well as a
+      # missing one. Anything short of that leaves the release a draft.
+      - name: Verify both assets uploaded intact, then publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status=0
+          for asset in Primary.exe SHA256SUMS.txt; do
+            want=$(stat -c%s "$asset")
+            got=$(gh release view "$GITHUB_REF_NAME" --json assets \
+                  --jq ".assets[] | select(.name == \"$asset\" and .state == \"uploaded\") | .size")
+            echo "$asset: local $want bytes / attached ${got:-none}"
+            if [ "$got" != "$want" ]; then
+              echo "::error::Release asset $asset is missing or incompletely uploaded"
+              status=1
+            fi
+          done
+          [ "$status" -eq 0 ] || exit 1
+          gh release edit "$GITHUB_REF_NAME" --draft=false
