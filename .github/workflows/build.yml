@@ -74,10 +74,19 @@ jobs:
           done
           exit $status
 
+      # Extracted per macro rather than with one alternation piped through
+      # `paste`, which silently assumed MAJOR/MINOR/PATCH appear in that order
+      # in the header. An empty component would build a nonsense version like
+      # "1..0", so each is asserted non-empty.
       - name: Verify the version resource matches app_strings.h
         run: |
-          src=$(grep -oP 'APP_VERSION_(MAJOR|MINOR|PATCH)\s+\K\d+' \
-                resources/app_strings.h | paste -sd.)
+          maj=$(grep -oP 'APP_VERSION_MAJOR\s+\K\d+' resources/app_strings.h)
+          min=$(grep -oP 'APP_VERSION_MINOR\s+\K\d+' resources/app_strings.h)
+          pat=$(grep -oP 'APP_VERSION_PATCH\s+\K\d+' resources/app_strings.h)
+          for c in "$maj" "$min" "$pat"; do
+            [ -n "$c" ] || { echo "::error::Could not read APP_VERSION_* from resources/app_strings.h"; exit 1; }
+          done
+          src="$maj.$min.$pat"
           echo "Source version: $src"
           strings -el Primary.exe | grep -qF "$src" || {
             echo "::error::Binary does not report source version $src"; exit 1; }

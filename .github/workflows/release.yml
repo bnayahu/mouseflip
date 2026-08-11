@@ -23,8 +23,17 @@ jobs:
       - name: Verify the tag matches the source version
         run: |
           tag="${GITHUB_REF_NAME#v}"
-          src=$(grep -oP 'APP_VERSION_(MAJOR|MINOR|PATCH)\s+\K\d+' \
-                resources/app_strings.h | paste -sd.)
+          # Extracted per macro rather than with one alternation piped through
+          # `paste`, which silently assumed MAJOR/MINOR/PATCH appear in that
+          # order in the header. An empty component would build a nonsense
+          # version like "1..0", so each is asserted non-empty.
+          maj=$(grep -oP 'APP_VERSION_MAJOR\s+\K\d+' resources/app_strings.h)
+          min=$(grep -oP 'APP_VERSION_MINOR\s+\K\d+' resources/app_strings.h)
+          pat=$(grep -oP 'APP_VERSION_PATCH\s+\K\d+' resources/app_strings.h)
+          for c in "$maj" "$min" "$pat"; do
+            [ -n "$c" ] || { echo "::error::Could not read APP_VERSION_* from resources/app_strings.h"; exit 1; }
+          done
+          src="$maj.$min.$pat"
           echo "Tag: $tag / source: $src"
           if [ "$tag" != "$src" ]; then
             echo "::error::Tag $tag does not match source version $src. Bump APP_VERSION_* in resources/app_strings.h."
