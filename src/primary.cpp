@@ -221,8 +221,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     break;
 
                 case IDM_EXIT:
-                    RemoveTrayIcon(hwnd);
-                    PostQuitMessage(0);
+                    DestroyWindow(hwnd);
                     break;
             }
             return 0;
@@ -508,7 +507,8 @@ INT_PTR CALLBACK OptionsDialogProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM
                     }
 
                     // Apply auto-switch setting
-                    if (!SetAutoSwitchEnabled(autoSwitchEnabled)) {
+                    bool autoSwitchWritten = SetAutoSwitchEnabled(autoSwitchEnabled);
+                    if (!autoSwitchWritten) {
                         MessageBox(hwndDlg,
                                   L"Failed to update auto-switch settings. Please check your permissions.",
                                   L"Error",
@@ -539,7 +539,7 @@ INT_PTR CALLBACK OptionsDialogProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM
                     // Settings may have changed the mapping without the device
                     // state changing, so discard the cached state to force the
                     // next check to apply the new configuration.
-                    if (autoSwitchEnabled) {
+                    if (autoSwitchEnabled && autoSwitchWritten) {
                         g_lastExternalMouseState = EXTERNAL_MOUSE_UNKNOWN;
                         CheckAndApplyAutoSwitch();
                     }
