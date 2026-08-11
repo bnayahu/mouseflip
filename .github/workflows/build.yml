@@ -6,6 +6,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# This workflow only builds and uploads an artifact; it makes no repository
+# writes. release.yml needs contents: write for `gh release create` — do not
+# copy this block there.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
